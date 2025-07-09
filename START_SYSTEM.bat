@@ -39,58 +39,62 @@ if not exist "ai-agent\simple_run.py" (
     exit /b 1
 )
 
-echo ✅ جميع الملفات موجودة
+echo ✅ جميع الملفات الرئيسية موجودة (real_backend.py, run_complete_system.py, ai-agent\simple_run.py)
 
-REM تثبيت المتطلبات إذا لم تكن مثبتة
-echo 📦 فحص المتطلبات...
+REM تثبيت المتطلبات إذا لم تكن مثبتة (يمكن تحسين هذا لاحقًا ليكون من requirements.txt)
+echo 📦 فحص المتطلبات الأساسية (Flask, requests)...
 python -c "import flask, requests" >nul 2>&1
 if errorlevel 1 (
-    echo ⚠️  بعض المكتبات غير مثبتة، جاري التثبيت...
-    pip install flask requests flask-cors >nul 2>&1
+    echo ⚠️  بعض المكتبات الأساسية غير مثبتة، جاري التثبيت...
+    pip install flask requests flask-cors
     if errorlevel 1 (
-        echo ❌ فشل في تثبيت المكتبات
-        echo 💡 قم بتشغيل: pip install flask requests flask-cors
+        echo ❌ فشل في تثبيت المكتبات الأساسية.
+        echo 💡 يرجى التأكد من تثبيت pip وتجربة: pip install flask requests flask-cors
         pause
         exit /b 1
     )
-    echo ✅ تم تثبيت المكتبات
+    echo ✅ تم تثبيت المكتبات الأساسية.
 ) else (
-    echo ✅ جميع المكتبات مثبتة
+    echo ✅ المكتبات الأساسية مثبتة.
 )
+echo 💡 ملاحظة: قد تحتاج إلى تثبيت مكتبات إضافية عبر 'pip install -r requirements.txt' لتشغيل كامل وآمن.
 
 echo.
-echo 🚀 تشغيل النظام الكامل...
+echo 🚀 تشغيل النظام الكامل الموحد...
 echo.
 
-REM تشغيل النظام الكامل
+REM تشغيل النظام الكامل عبر السكريبت البايثون المحدث
 python run_complete_system.py
 
-REM إذا فشل التشغيل الكامل، جرب التشغيل اليدوي
+REM إذا فشل التشغيل الكامل، جرب التشغيل اليدوي للمكونات الأساسية
 if errorlevel 1 (
     echo.
-    echo ⚠️  فشل التشغيل التلقائي، جاري المحاولة اليدوية...
+    echo ⚠️  فشل التشغيل التلقائي عبر run_complete_system.py، جاري التشغيل اليدوي للمكونات...
     echo.
     
-    echo 🤖 تشغيل AI Agent...
-    start "AI Agent" python ai-agent\simple_run.py
+    echo 🗄️  تشغيل الباك-إند الموحد (API + واجهة أمامية)...
+    start "Unified Backend" python real_backend.py
     
     echo ⏳ انتظار 5 ثوان...
     timeout /t 5 /nobreak >nul
+
+    echo 🤖 تشغيل AI Agent...
+    start "AI Agent" python ai-agent\simple_run.py
+
+    echo ⏳ انتظار 3 ثوان...
+    timeout /t 3 /nobreak >nul
     
-    echo 🌐 تشغيل الخادم الرئيسي...
     echo.
-    echo 📋 الخدمات ستكون متاحة على:
-    echo    🏠 الصفحة الرئيسية: http://localhost:8000
-    echo    💬 الشات بوت: http://localhost:8000/web-integration/chatbot-widget.html
-    echo    📊 لوحة التحكم: http://localhost:8000/dashboard/index.html
+    echo 📋 الخدمات متاحة على (يفترض المنفذ 8001 للباك-إند أو كما في .env):
+    echo    🗄️  النظام الموحد: http://localhost:8001/
+    echo    💬 الشات بوت: http://localhost:8001/web-integration/chatbot-widget.html
+    echo    📊 لوحة التحكم: http://localhost:8001/dashboard/index.html
     echo    🤖 AI Agent: http://localhost:5000
     echo.
-    echo ⌨️  اضغط Ctrl+C للإيقاف
+    echo ⌨️  سيستمر هذا الوضع اليدوي حتى يتم إغلاق النوافذ يدويًا أو إيقاف العمليات.
     echo.
-    
-    python server.py
 )
 
 echo.
-echo 👋 تم إيقاف النظام
+echo 👋 النظام متوقف أو يعمل في الخلفية (إذا بدأ بنجاح).
 pause

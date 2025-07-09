@@ -65,42 +65,43 @@ if errorlevel 1 (
 )
 
 echo.
-echo 🚀 تشغيل النظام الذكي...
+echo 🚀 تشغيل النظام الذكي الموحد...
 echo.
 
-REM تشغيل الباك-إند مع DeepSeek AI
-echo 🧠 تشغيل الباك-إند الذكي...
-start "AI Backend" python real_backend.py
+REM تشغيل الباك-إند الموحد (API + واجهة أمامية) مع DeepSeek AI
+echo 🧠 تشغيل الباك-إند الذكي الموحد...
+start "Unified AI Backend" python real_backend.py
 
 echo ⏳ انتظار 5 ثوان...
 timeout /t 5 /nobreak >nul
 
-REM تشغيل الفرونت-إند
-echo 🌐 تشغيل الفرونت-إند...
-start "Frontend Server" python simple_server.py --port 8000
+REM تشغيل AI Agent
+echo 🤖 تشغيل AI Agent...
+start "AI Agent" python ai-agent\simple_run.py
 
 echo ⏳ انتظار 3 ثوان...
 timeout /t 3 /nobreak >nul
 
 echo.
-echo 📋 النظام الذكي يعمل على:
-echo    🧠 الباك-إند الذكي: http://localhost:8001
-echo    🏠 الصفحة الرئيسية: http://localhost:8000
-echo    💬 الشات بوت الذكي: http://localhost:8000/web-integration/chatbot-widget.html
-echo    📊 لوحة التحكم: http://localhost:8000/dashboard/index.html
+echo 📋 النظام الذكي الموحد يعمل على (يفترض المنفذ 8001 أو كما في .env):
+echo    🧠 الباك-إند و الواجهة: http://localhost:8001
+echo    🏠 الصفحة الرئيسية: http://localhost:8001/
+echo    💬 الشات بوت الذكي: http://localhost:8001/web-integration/chatbot-widget.html
+echo    📊 لوحة التحكم: http://localhost:8001/dashboard/index.html
+echo    🤖 AI Agent: http://localhost:5000
 echo.
 
 echo 🧪 اختبار الاتصال...
 curl -s http://localhost:8001/api/health >nul 2>&1
 if errorlevel 1 (
-    echo ⚠️  الباك-إند قد يحتاج وقت إضافي للبدء
+    echo ⚠️  الباك-إند الموحد قد يحتاج وقت إضافي للبدء أو تأكد من تشغيله على المنفذ الصحيح.
 ) else (
-    echo ✅ الباك-إند الذكي يعمل بنجاح
+    echo ✅ الباك-إند الذكي الموحد يستجيب بنجاح.
 )
 
 echo.
 echo 🌐 فتح الشات بوت الذكي...
-start http://localhost:8000/web-integration/chatbot-widget.html
+start http://localhost:8001/web-integration/chatbot-widget.html
 
 echo.
 echo 🧠 المميزات الذكية الجديدة:

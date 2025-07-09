@@ -26,38 +26,42 @@ if errorlevel 1 (
 echo ✅ Python متاح
 
 REM فحص الملفات
-if not exist "backend_server.py" (
-    echo ❌ ملف backend_server.py غير موجود
+if not exist "real_backend.py" (
+    echo ❌ ملف real_backend.py غير موجود
+    pause
+    exit /b 1
+)
+if not exist "run_full_system.py" (
+    echo ❌ ملف run_full_system.py غير موجود
+    pause
+    exit /b 1
+)
+if not exist "ai-agent\simple_run.py" (
+    echo ❌ ملف ai-agent\simple_run.py غير موجود
     pause
     exit /b 1
 )
 
-echo ✅ جميع الملفات موجودة
+echo ✅ جميع الملفات الرئيسية موجودة
 
 echo.
-echo 🚀 تشغيل النظام الكامل...
+echo 🚀 تشغيل النظام الكامل الموحد...
 echo.
 
-REM تشغيل النظام الكامل
+REM تشغيل النظام الكامل عبر السكريبت البايثون المحدث
 python run_full_system.py
 
-REM إذا فشل، جرب التشغيل اليدوي
+REM إذا فشل، جرب التشغيل اليدوي للمكونات الأساسية
 if errorlevel 1 (
     echo.
-    echo ⚠️  فشل التشغيل التلقائي، جاري التشغيل اليدوي...
+    echo ⚠️  فشل التشغيل التلقائي عبر run_full_system.py، جاري التشغيل اليدوي للمكونات...
     echo.
     
-    echo 🗄️  تشغيل الباك-إند الحقيقي...
-    start "Backend Server" python backend_server.py
+    echo 🗄️  تشغيل الباك-إند الموحد (API + واجهة أمامية)...
+    start "Unified Backend" python real_backend.py
     
     echo ⏳ انتظار 5 ثوان...
     timeout /t 5 /nobreak >nul
-    
-    echo 🌐 تشغيل الفرونت-إند...
-    start "Frontend Server" python simple_server.py --port 8000
-    
-    echo ⏳ انتظار 3 ثوان...
-    timeout /t 3 /nobreak >nul
     
     echo 🤖 تشغيل AI Agent...
     start "AI Agent" python ai-agent\simple_run.py
@@ -67,14 +71,14 @@ if errorlevel 1 (
     
     echo.
     echo 📋 الخدمات متاحة على:
-    echo    🗄️  الباك-إند: http://localhost:8001
-    echo    🏠 الصفحة الرئيسية: http://localhost:8000
-    echo    💬 الشات بوت: http://localhost:8000/web-integration/chatbot-widget.html
-    echo    📊 لوحة التحكم: http://localhost:8000/dashboard/index.html
+    echo    🗄️  النظام الموحد (API + واجهة): http://localhost:8001 (أو المنفذ المحدد في .env)
+    echo    🏠 الصفحة الرئيسية: http://localhost:8001/
+    echo    💬 الشات بوت: http://localhost:8001/web-integration/chatbot-widget.html
+    echo    📊 لوحة التحكم: http://localhost:8001/dashboard/index.html
     echo    🤖 AI Agent: http://localhost:5000
     echo.
-    echo 🌐 فتح المتصفح...
-    start http://localhost:8000
+    echo 🌐 فتح المتصفح (يفترض أن المنفذ هو 8001 أو كما في .env)...
+    start http://localhost:8001
     
     echo.
     echo 💡 المميزات الجديدة:

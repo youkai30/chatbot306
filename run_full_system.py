@@ -36,11 +36,11 @@ def check_requirements():
     
     # فحص الملفات
     required_files = [
-        'backend_server.py',
-        'simple_server.py', 
+        'real_backend.py', # تم التغيير
+        # 'simple_server.py', # تم الإزالة
         'ai-agent/simple_run.py',
-        'web-integration/chatbot-widget.html',
-        'dashboard/index.html'
+        'web-integration/chatbot-widget.html', # للتأكد من وجود الواجهات التي سيخدمها real_backend
+        'dashboard/index.html' # للتأكد من وجود الواجهات التي سيخدمها real_backend
     ]
     
     missing = []
@@ -52,51 +52,44 @@ def check_requirements():
         print(f"❌ ملفات مفقودة: {missing}")
         return False
     
-    print("✅ جميع المتطلبات متوفرة")
+    print("✅ جميع المتطلبات الأساسية متوفرة")
     return True
 
-def start_backend():
-    """تشغيل الباك-إند الحقيقي"""
-    print("🗄️  تشغيل الباك-إند الحقيقي...")
+def start_unified_backend(): # تم تغيير اسم الدالة والمحتوى
+    """تشغيل الباك-إند الموحد (API + واجهة أمامية)"""
+    print("🗄️  تشغيل الباك-إند الموحد (real_backend.py)...")
     
     try:
+        # محاولة قراءة المنفذ من .env إذا أمكن، وإلا استخدام الافتراضي 8001
+        backend_port = "8001" # قيمة افتراضية
+        try:
+            from secure_config import config
+            backend_port = str(config.backend_port)
+        except Exception:
+            print(f"⚠️ لم يتمكن من قراءة المنفذ من secure_config، سيستخدم المنفذ الافتراضي: {backend_port}")
+
         process = subprocess.Popen([
-            sys.executable, 'backend_server.py'
+            sys.executable, 'real_backend.py' # تم التغيير
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
-        time.sleep(3)
+        time.sleep(5) # زيادة وقت الانتظار قليلاً لأن Flask قد يستغرق وقتًا أطول للبدء
         
         # فحص إذا كان يعمل
         if process.poll() is None:
-            print("✅ الباك-إند يعمل على http://localhost:8001")
+            print(f"✅ الباك-إند الموحد يعمل (يفترض على http://localhost:{backend_port})")
             return process
         else:
-            print("❌ فشل في تشغيل الباك-إند")
+            print("❌ فشل في تشغيل الباك-إند الموحد (real_backend.py)")
             return None
     except Exception as e:
-        print(f"❌ خطأ في تشغيل الباك-إند: {e}")
+        print(f"❌ خطأ في تشغيل الباك-إند الموحد: {e}")
         return None
 
-def start_frontend():
-    """تشغيل الفرونت-إند"""
-    print("🌐 تشغيل الفرونت-إند...")
-    
-    try:
-        process = subprocess.Popen([
-            sys.executable, 'simple_server.py', '--port', '8000'
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        time.sleep(2)
-        
-        if process.poll() is None:
-            print("✅ الفرونت-إند يعمل على http://localhost:8000")
-            return process
-        else:
-            print("❌ فشل في تشغيل الفرونت-إند")
-            return None
-    except Exception as e:
-        print(f"❌ خطأ في تشغيل الفرونت-إند: {e}")
-        return None
+# def start_frontend(): # تم تعطيل هذه الدالة
+#     """تشغيل الفرونت-إند"""
+#     print("🌐 (الفرونت-إند الآن يُخدم بواسطة الباك-إند الموحد)")
+#     return True # إرجاع True للإشارة إلى أنه "بدأ" ضمنيًا
+
 
 def start_ai_agent():
     """تشغيل AI Agent"""
@@ -124,11 +117,17 @@ def open_browser_tabs():
     """فتح علامات تبويب المتصفح"""
     def open_delayed():
         time.sleep(5)
-        
+        backend_port = "8001" # قيمة افتراضية
+        try:
+            from secure_config import config
+            backend_port = str(config.backend_port)
+        except Exception:
+            pass # استخدام الافتراضي
+
         urls = [
-            ('الصفحة الرئيسية', 'http://localhost:8000'),
-            ('الشات بوت', 'http://localhost:8000/web-integration/chatbot-widget.html'),
-            ('لوحة التحكم', 'http://localhost:8000/dashboard/index.html'),
+            ('الصفحة الرئيسية', f'http://localhost:{backend_port}/'),
+            ('الشات بوت', f'http://localhost:{backend_port}/web-integration/chatbot-widget.html'),
+            ('لوحة التحكم', f'http://localhost:{backend_port}/dashboard/index.html'),
         ]
         
         for name, url in urls:
@@ -150,57 +149,59 @@ def test_system():
     try:
         import requests
         
-        # اختبار الباك-إند
+        backend_port = "8001" # قيمة افتراضية
         try:
-            response = requests.get('http://localhost:8001/api/health', timeout=5)
-            if response.ok:
-                print("✅ الباك-إند يستجيب")
-            else:
-                print("⚠️  الباك-إند لا يستجيب بشكل صحيح")
-        except:
-            print("❌ الباك-إند غير متاح")
-        
-        # اختبار الفرونت-إند
+            from secure_config import config
+            backend_port = str(config.backend_port)
+        except Exception:
+            pass
+
+        # اختبار الباك-إند الموحد
         try:
-            response = requests.get('http://localhost:8000', timeout=5)
+            response = requests.get(f'http://localhost:{backend_port}/api/health', timeout=5)
             if response.ok:
-                print("✅ الفرونت-إند يستجيب")
+                print(f"✅ الباك-إند الموحد يستجيب على http://localhost:{backend_port}")
             else:
-                print("⚠️  الفرونت-إند لا يستجيب بشكل صحيح")
+                print(f"⚠️  الباك-إند الموحد لا يستجيب بشكل صحيح على http://localhost:{backend_port}")
         except:
-            print("❌ الفرونت-إند غير متاح")
+            print(f"❌ الباك-إند الموحد غير متاح على http://localhost:{backend_port}")
         
         # اختبار AI Agent
         try:
-            response = requests.get('http://localhost:5000/api/health', timeout=5)
+            response = requests.get('http://localhost:5000/api/health', timeout=5) # افترض أن AI Agent لديه health endpoint
             if response.ok:
                 print("✅ AI Agent يستجيب")
             else:
                 print("⚠️  AI Agent لا يستجيب بشكل صحيح")
         except:
-            print("⚠️  AI Agent غير متاح")
+            print("⚠️  AI Agent غير متاح أو لا يوجد لديه /api/health")
             
     except ImportError:
         print("⚠️  مكتبة requests غير مثبتة، تخطي الاختبار")
 
 def print_system_status(processes):
     """طباعة حالة النظام"""
+    backend_port = "8001" # قيمة افتراضية
+    try:
+        from secure_config import config
+        backend_port = str(config.backend_port)
+    except Exception:
+        pass
+
     print(f"""
 {'='*60}
-🎉 النظام يعمل بنجاح!
+🎉 النظام الموحد يعمل بنجاح!
 
-🗄️  الباك-إند الحقيقي:
-   📊 الإحصائيات: http://localhost:8001/api/stats
-   💬 الشات API: http://localhost:8001/api/chat
-   🔍 فحص الصحة: http://localhost:8001/api/health
-
-🌐 الفرونت-إند:
-   🏠 الصفحة الرئيسية: http://localhost:8000
-   💬 الشات بوت: http://localhost:8000/web-integration/chatbot-widget.html
-   📊 لوحة التحكم: http://localhost:8000/dashboard/index.html
+🗄️  الباك-إند الموحد (API + واجهة أمامية):
+   🏠 الصفحة الرئيسية: http://localhost:{backend_port}/
+   💬 الشات بوت: http://localhost:{backend_port}/web-integration/chatbot-widget.html
+   📊 لوحة التحكم: http://localhost:{backend_port}/dashboard/index.html
+   📈 الإحصائيات API: http://localhost:{backend_port}/api/stats
+   💬 الشات API: http://localhost:{backend_port}/api/chat
+   🔍 فحص الصحة API: http://localhost:{backend_port}/api/health
 
 🤖 AI Agent:
-   🔧 واجهة التحكم: http://localhost:5000
+   🔧 واجهة التحكم: http://localhost:5000 (إذا كان يعمل)
 
 💡 المميزات الجديدة:
    ✅ قاعدة بيانات SQLite حقيقية
@@ -237,23 +238,23 @@ def main():
     # تشغيل المكونات
     processes = {}
     
-    # تشغيل الباك-إند
-    processes['الباك-إند'] = start_backend()
+    # تشغيل الباك-إند الموحد
+    processes['الباك-إند الموحد'] = start_unified_backend() # تم التغيير
     
-    # تشغيل الفرونت-إند
-    processes['الفرونت-إند'] = start_frontend()
+    # الفرونت-إند لم يعد عملية منفصلة
+    # processes['الفرونت-إند'] = start_frontend() # تم التعليق
     
     # تشغيل AI Agent (اختياري)
     processes['AI Agent'] = start_ai_agent()
     
-    # فحص إذا كان الباك-إند والفرونت-إند يعملان
-    if not processes['الباك-إند'] or not processes['الفرونت-إند']:
-        print("\n❌ فشل في تشغيل المكونات الأساسية")
+    # فحص إذا كان الباك-إند الموحد يعمل
+    if not processes['الباك-إند الموحد']: # تم التغيير
+        print("\n❌ فشل في تشغيل الباك-إند الموحد (المكون الأساسي)")
         
         # إيقاف العمليات المتبقية
-        for process in processes.values():
-            if process:
-                process.terminate()
+        if processes.get('AI Agent'):
+            if processes['AI Agent']:
+                processes['AI Agent'].terminate()
         
         input("اضغط Enter للخروج...")
         return

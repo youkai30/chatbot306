@@ -18,20 +18,14 @@ echo ✅ الاختبار نجح
 
 REM تشغيل الباك-إند
 echo 🔐 تشغيل الباك-إند الآمن...
-start "Secure Backend" python real_backend.py
+start "Unified Secure Backend" python real_backend.py
 
 timeout /t 3 /nobreak >nul
 
-REM تشغيل الفرونت-إند
-echo 🌐 تشغيل الفرونت-إند...
-start "Frontend" python simple_server.py --port 8000
+echo ✅ النظام الموحد يعمل! (يفترض المنفذ 8001 أو كما في .env)
+echo 🔐 تسجيل الدخول: http://localhost:8001/dashboard/secure_login.html
+echo 💬 الشات: http://localhost:8001/web-integration/chatbot-widget.html
 
-timeout /t 2 /nobreak >nul
-
-echo ✅ النظام يعمل!
-echo 🔐 تسجيل الدخول: http://localhost:8000/dashboard/secure_login.html
-echo 💬 الشات: http://localhost:8000/web-integration/chatbot-widget.html
-
-start http://localhost:8000/dashboard/secure_login.html
+start http://localhost:8001/dashboard/secure_login.html
 
 pause

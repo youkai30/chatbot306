@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory # تمت إضافة send_from_directory
 from flask_cors import CORS
 import sqlite3
 import time
@@ -6,9 +6,10 @@ from datetime import datetime
 from pathlib import Path
 from deepseek_ai import deepseek_ai
 from secure_config import config
-from secure_auth import secure_auth, require_auth, require_role
-from rate_limiter import rate_limiter, rate_limit
+from secure_auth import secure_auth, require_auth, require_role # تأكد من صحة هذا الاستيراد
+from rate_limiter import rate_limiter, rate_limit # تأكد من صحة هذا الاستيراد
 import logging
+import os # تمت إضافة os
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,39 @@ else:
     print(f"⚠️  DeepSeek AI: {ai_test['message']}")
     print("   سيتم استخدام الردود الاحتياطية")
 
+# --- بداية تعديلات خدمة الملفات الثابتة ---
+PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
+
+@app.route('/')
+def serve_index():
+    return send_from_directory(PROJECT_ROOT, 'index.html')
+
+@app.route('/<path:filename>')
+def serve_root_static_files(filename):
+    allowed_root_files = ['favicon.ico', 'manifest.json', 'robots.txt', 'README.md', 'README_QUICK.md', 'PROJECT_SUMMARY.md', 'COMPLETE_SYSTEM_GUIDE.md', 'DEEPSEEK_AI_GUIDE.md', 'QUICK_START_GUIDE.md', 'REAL_BACKEND_GUIDE.md', 'REAL_SYSTEM_GUIDE.md', 'SECURE_SYSTEM_GUIDE.md']
+    allowed_extensions = ['.png', '.jpg', '.jpeg', '.css', '.js', '.ico', '.txt', '.md'] # السماح بـ .md
+    file_ext = os.path.splitext(filename)[1].lower()
+
+    if filename in allowed_root_files or file_ext in allowed_extensions:
+        # تحقق إضافي لمنع خدمة ملفات .py أو .env من الجذر
+        if filename.endswith(('.py', '.env', '.bat', '.sh')) or '.git' in filename:
+             return "Access denied", 403
+        return send_from_directory(PROJECT_ROOT, filename)
+    return "File not found or not permitted", 404
+
+
+@app.route('/web-integration/<path:filename>')
+def serve_web_integration_files(filename):
+    web_integration_dir = os.path.join(PROJECT_ROOT, 'web-integration')
+    return send_from_directory(web_integration_dir, filename)
+
+@app.route('/dashboard/<path:filename>')
+def serve_dashboard_files(filename):
+    dashboard_dir = os.path.join(PROJECT_ROOT, 'dashboard')
+    return send_from_directory(dashboard_dir, filename)
+
+# --- نهاية تعديلات خدمة الملفات الثابتة ---
+
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -46,20 +80,41 @@ def get_db_connection():
 def stats():
     conn = get_db_connection()
     cur = conn.cursor()
+
+    # إجمالي المحادثات
     cur.execute('SELECT COUNT(*) FROM conversations')
     total_conversations = cur.fetchone()[0]
+
+    # المستخدمون النشطون اليوم
+    cur.execute("SELECT COUNT(DISTINCT user_id) FROM conversations WHERE date(timestamp) = date('now')")
+    active_users_today = cur.fetchone()[0]
+
+    # إجمالي المستخدمين المميزين (من جدول users إذا كان يُملأ بشكل جيد، أو conversations كبديل)
+    # سنستخدم conversations كبديل لضمان وجود بيانات
     cur.execute('SELECT COUNT(DISTINCT user_id) FROM conversations')
-    active_users = cur.fetchone()[0]
+    total_distinct_users = cur.fetchone()[0]
+
+    # متوسط وقت الاستجابة
     cur.execute('SELECT AVG(response_time) FROM conversations')
     response_time = round(cur.fetchone()[0] or 1.2, 1)
+
+    # معدل الرضا
     cur.execute('SELECT AVG(satisfaction) FROM conversations WHERE satisfaction IS NOT NULL')
-    satisfaction_rate = round((cur.fetchone()[0] or 4.5) * 20, 1)
-    cur.execute('SELECT channel, COUNT(*) FROM conversations GROUP BY channel')
-    channels = {row[0]: row[1] for row in cur.fetchall()}
-    # Hourly stats
-    cur.execute("SELECT strftime('%H', timestamp) as hour, COUNT(*) FROM conversations GROUP BY hour ORDER BY hour")
-    hourly_stats = [{"hour": row[0], "messages": row[1]} for row in cur.fetchall()]
-    # Recent chats
+    satisfaction_rate = round((cur.fetchone()[0] or 4.5) * 20, 1) # تحويل من 5 إلى 100
+
+    # إحصائيات القنوات لليوم الحالي
+    cur.execute("SELECT channel, COUNT(*) FROM conversations WHERE date(timestamp) = date('now') GROUP BY channel")
+    channels_data_today = {row[0]: row[1] for row in cur.fetchall()}
+
+    # إحصائيات الساعات لليوم الحالي
+    cur.execute("SELECT strftime('%H:00', timestamp) as hour, COUNT(*) as count FROM conversations WHERE date(timestamp) = date('now') GROUP BY hour ORDER BY hour")
+    hourly_stats_today = [{'hour': row[0], 'messages': row[1]} for row in cur.fetchall()]
+
+    # إجمالي الرسائل اليوم
+    cur.execute("SELECT COUNT(*) FROM conversations WHERE date(timestamp) = date('now')")
+    messages_today = cur.fetchone()[0]
+
+    # المحادثات الحديثة
     cur.execute('SELECT user_id, user_message, channel, timestamp FROM conversations ORDER BY timestamp DESC LIMIT 10')
     recent_chats = []
     for row in cur.fetchall():
@@ -78,11 +133,13 @@ def stats():
     conn.close()
     return jsonify({
         "total_conversations": total_conversations,
-        "active_users": active_users,
+        "active_users_today": active_users_today,
+        "total_distinct_users": total_distinct_users,
+        "messages_today": messages_today,
         "response_time": response_time,
         "satisfaction_rate": satisfaction_rate,
-        "channels": channels,
-        "hourly_stats": hourly_stats,
+        "channels_today": channels_data_today,
+        "hourly_stats_today": hourly_stats_today,
         "recent_chats": recent_chats
     })
 
@@ -90,54 +147,196 @@ def stats():
 def conversations():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('SELECT user_id, channel, user_message, satisfaction, timestamp FROM conversations ORDER BY timestamp DESC LIMIT 20')
-    conversations = []
+    # جلب المزيد من التفاصيل وتوحيد الحقول مع ما كان في backend_server.py
+    # وزيادة الحد إلى 50
+    cur.execute('''
+        SELECT id, user_id, session_id, user_message, bot_response, channel, timestamp, response_time, satisfaction
+        FROM conversations
+        ORDER BY timestamp DESC
+        LIMIT 50
+    ''')
+    conversations_list = []
     for row in cur.fetchall():
-        conversations.append({
-            'user': row[0],
-            'channel': row[1],
-            'last_message': row[2],
-            'status': 'resolved' if row[3] else 'pending',
-            'time': row[4]
+        conversations_list.append({
+            'id': row[0],
+            'user_id': row[1],
+            'session_id': row[2],
+            'user_message': row[3],
+            'bot_response': row[4],
+            'channel': row[5],
+            'timestamp': row[6],
+            'response_time': row[7],
+            'satisfaction': row[8],
+            'status': 'resolved' if row[8] is not None else ('pending' if not row[4] else 'answered') # تحسين منطق الحالة
         })
     conn.close()
-    return jsonify({'conversations': conversations})
+    return jsonify({'conversations': conversations_list})
 
 @app.route('/api/channels')
-def channels():
+def channels_api():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('SELECT channel, COUNT(*) FROM conversations GROUP BY channel')
-    channels = []
+    # جلب إحصائيات أكثر تفصيلاً لكل قناة
+    cur.execute('''
+        SELECT
+            channel,
+            COUNT(*) as total_messages,
+            COUNT(DISTINCT user_id) as distinct_users,
+            AVG(response_time) as avg_response_time,
+            SUM(CASE WHEN date(timestamp) = date('now') THEN 1 ELSE 0 END) as messages_today
+        FROM conversations
+        GROUP BY channel
+    ''')
+    channels_detailed_list = []
     for row in cur.fetchall():
-        channels.append({'name': row[0], 'active': True, 'users': row[1]})
+        channels_detailed_list.append({
+            'id': row[0].lower().replace(" ", "_"), # إنشاء id بسيط
+            'name': row[0],
+            'status': 'active', # افتراضيًا
+            'total_messages': row[1],
+            'distinct_users': row[2],
+            'avg_response_time': round(row[3] or 0, 1),
+            'messages_today': row[4]
+        })
     conn.close()
-    return jsonify({'channels': channels})
+    return jsonify({'channels': channels_detailed_list})
 
 @app.route('/api/analytics')
 def analytics():
     conn = get_db_connection()
     cur = conn.cursor()
+
+    # Summary
     cur.execute('SELECT COUNT(*) FROM conversations')
-    total_conversations = cur.fetchone()[0]
+    total_conversations = cur.fetchone()[0] if cur.fetchone() else 0
     cur.execute('SELECT COUNT(DISTINCT user_id) FROM conversations')
-    total_users = cur.fetchone()[0]
-    cur.execute('SELECT AVG(response_time) FROM conversations')
-    avg_response_time = round(cur.fetchone()[0] or 1.2, 1)
+    total_users = cur.fetchone()[0] if cur.fetchone() else 0
+    cur.execute('SELECT AVG(response_time) FROM conversations WHERE response_time IS NOT NULL')
+    avg_response_time_row = cur.fetchone()
+    avg_response_time = round(avg_response_time_row[0] if avg_response_time_row and avg_response_time_row[0] is not None else 1.2, 1)
     cur.execute('SELECT AVG(satisfaction) FROM conversations WHERE satisfaction IS NOT NULL')
-    satisfaction_rate = round((cur.fetchone()[0] or 4.5) * 20, 1)
+    satisfaction_rate_row = cur.fetchone()
+    satisfaction_rate = round((satisfaction_rate_row[0] if satisfaction_rate_row and satisfaction_rate_row[0] is not None else 4.5) * 20, 1)
     cur.execute('SELECT channel, COUNT(*) FROM conversations GROUP BY channel ORDER BY COUNT(*) DESC LIMIT 3')
-    top_channels = [row[0] for row in cur.fetchall()]
+    top_channels_query = cur.fetchall()
+    top_channels = [row[0] for row in top_channels_query]
+
+    # User Satisfaction
+    user_satisfaction_distribution = {'excellent': 0, 'good': 0, 'average': 0, 'poor': 0, 'not_rated': 0}
+    if total_conversations > 0:
+        cur.execute('SELECT satisfaction, COUNT(*) FROM conversations GROUP BY satisfaction')
+        satisfaction_counts = dict(cur.fetchall())
+
+        # Примерное распределение на основе оценок от 1 до 5 (если satisfaction так хранится)
+        # Это нужно адаптировать, если satisfaction хранится иначе
+        user_satisfaction_distribution['excellent'] = satisfaction_counts.get(5, 0)
+        user_satisfaction_distribution['good'] = satisfaction_counts.get(4, 0)
+        user_satisfaction_distribution['average'] = satisfaction_counts.get(3, 0)
+        user_satisfaction_distribution['poor'] = sum(satisfaction_counts.get(i, 0) for i in [1, 2])
+        user_satisfaction_distribution['not_rated'] = total_conversations - sum(user_satisfaction_distribution.values())
+
+    # Response Times
+    cur.execute("SELECT response_time FROM conversations WHERE response_time IS NOT NULL")
+    all_response_times = [row[0] for row in cur.fetchall()]
+    response_times_distribution = {
+        'under_1s': sum(1 for t in all_response_times if t < 1),
+        '1_to_3s': sum(1 for t in all_response_times if 1 <= t <= 3),
+        '3_to_5s': sum(1 for t in all_response_times if 3 < t <= 5),
+        'over_5s': sum(1 for t in all_response_times if t > 5)
+    }
+
+    # Popular Topics (mocked for now)
+    popular_topics_mock = [
+        {'topic': 'استفسارات عامة', 'count': int(total_conversations * 0.4) if total_conversations else 0, 'percentage': 40.0},
+        {'topic': 'مشاكل تقنية', 'count': int(total_conversations * 0.25) if total_conversations else 0, 'percentage': 25.0},
+        {'topic': 'طلبات المنتج', 'count': int(total_conversations * 0.20) if total_conversations else 0, 'percentage': 20.0},
+        {'topic': 'اقتراحات', 'count': int(total_conversations * 0.15) if total_conversations else 0, 'percentage': 15.0}
+    ]
+
     conn.close()
     return jsonify({
         'summary': {
             'total_conversations': total_conversations,
             'total_users': total_users,
             'avg_response_time': avg_response_time,
-            'satisfaction_rate': satisfaction_rate
+            'satisfaction_rate': satisfaction_rate,
+            'top_channels': top_channels
         },
-        'top_channels': top_channels
+        'user_satisfaction': user_satisfaction_distribution,
+        'response_times': response_times_distribution,
+        'popular_topics': popular_topics_mock
     })
+
+@app.route('/api/flows')
+@require_auth # افترض أن require_auth تم استيراده ويعمل بشكل صحيح
+def flows_api():
+    mock_flows = [
+        {
+            'id': 'welcome_flow',
+            'name': 'سيناريو الترحيب',
+            'status': 'active',
+            'triggers': 150,
+            'success_rate': 92.5,
+            'last_updated': '2024-02-10T10:00:00Z'
+        },
+        {
+            'id': 'support_flow',
+            'name': 'سيناريو الدعم الفني',
+            'status': 'active',
+            'triggers': 85,
+            'success_rate': 88.0,
+            'last_updated': '2024-02-09T15:30:00Z'
+        }
+    ]
+    return jsonify({'flows': mock_flows})
+
+@app.route('/api/integrations')
+@require_auth # افترض أن require_auth تم استيراده ويعمل بشكل صحيح
+def integrations_api():
+    ai_connection_status = deepseek_ai.test_connection()
+    integrations_data = {
+        'integrations': [
+            {
+                'id': 'deepseek',
+                'name': 'DeepSeek AI',
+                'type': 'ai_provider',
+                'status': ai_connection_status.get('status', 'unknown'),
+                'last_sync': datetime.now().isoformat(),
+                'details': ai_connection_status.get('message', '')
+            },
+            {
+                'id': 'google_sheets',
+                'name': 'Google Sheets',
+                'type': 'data_storage',
+                'status': 'disconnected',
+                'last_sync': None,
+                'details': 'Not configured'
+            }
+        ]
+    }
+    return jsonify(integrations_data)
+
+@app.route('/api/settings')
+@require_auth # افترض أن require_auth تم استيراده ويعمل بشكل صحيح
+def settings_api():
+    settings_data = {
+        'general': {
+            'bot_name': config.get('BOT_NAME', 'المساعد الذكي'),
+            'default_language': config.get('DEFAULT_LANGUAGE', 'ar'),
+            'timezone': config.get('TIMEZONE', 'Asia/Riyadh'),
+        },
+        'ai_settings': {
+            'provider': 'deepseek',
+            'model': config.get('DEEPSEEK_MODEL', 'deepseek-chat'),
+            'temperature': config.get('DEEPSEEK_TEMPERATURE', 0.7), # يجب أن يكون float
+            'max_tokens': config.get_int('DEEPSEEK_MAX_TOKENS', 1000),
+        },
+        'rate_limiting': { # مثال لإعدادات الحد من الطلبات
+            'chat_api_limit_requests': config.get_int('RATE_LIMIT_CHAT_API_REQUESTS', 100),
+            'chat_api_limit_period_seconds': config.get_int('RATE_LIMIT_CHAT_API_PERIOD_SECONDS', 60)
+        }
+    }
+    return jsonify(settings_data)
 
 @app.route('/api/chat', methods=['POST'])
 @rate_limit('chat_api')
@@ -172,8 +371,8 @@ def health():
     db_status = 'connected' if Path(DB_PATH).exists() else 'disconnected'
 
     # فحص DeepSeek AI
-    ai_test = deepseek_ai.test_connection()
-    ai_status = ai_test['status']
+    ai_test_result = deepseek_ai.test_connection() # تم تغيير اسم المتغير
+    ai_status = ai_test_result['status'] # تم استخدام الاسم الجديد
 
     return jsonify({
         'status': 'healthy',
@@ -186,8 +385,8 @@ def health():
 def ai_stats():
     """إحصائيات DeepSeek AI"""
     try:
-        stats = deepseek_ai.get_usage_stats()
-        return jsonify(stats)
+        stats_data = deepseek_ai.get_usage_stats() # تم تغيير اسم المتغير
+        return jsonify(stats_data) # تم استخدام الاسم الجديد
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -271,26 +470,24 @@ def save_conversation(user_id, session_id, user_message, bot_response):
         except:
             pass
 
-if __name__ == '__main__':
-    print("""
-╔══════════════════════════════════════════════════════════════╗
-║                                                              ║
-║                🗄️  الباك-إند الحقيقي                        ║
-║                                                              ║
-║                  مع قاعدة بيانات حقيقية                     ║
-║                                                              ║
-╚══════════════════════════════════════════════════════════════╝
-
-🚀 تشغيل الباك-إند على المنفذ 8001...
-
-📊 قاعدة البيانات: SQLite (chatbot_data.db)
-📋 APIs المتاحة:
-   📈 الإحصائيات: http://localhost:8001/api/stats
-   💬 الشات: http://localhost:8001/api/chat
-   🔍 الصحة: http://localhost:8001/api/health
-
-⌨️  اضغط Ctrl+C للإيقاف
-    """)
+# تم نقل هذا الجزء إلى الأسفل ليكون بعد تعريف جميع المسارات
+# if __name__ == '__main__':
+#     print("""
+# ╔══════════════════════════════════════════════════════════════╗
+# ║                                                              ║
+# ║                🗄️  الباك-إند الحقيقي                        ║
+# ║                                                              ║
+# ║                  مع قاعدة بيانات حقيقية                     ║
+# ║                                                              ║
+# ╚══════════════════════════════════════════════════════════════╝
+# 🚀 تشغيل الباك-إند على المنفذ 8001...
+# 📊 قاعدة البيانات: SQLite (chatbot_data.db)
+# 📋 APIs المتاحة:
+#    📈 الإحصائيات: http://localhost:8001/api/stats
+#    💬 الشات: http://localhost:8001/api/chat
+#    🔍 الصحة: http://localhost:8001/api/health
+# ⌨️  اضغط Ctrl+C للإيقاف
+#     """)
 
 # APIs المصادقة
 @app.route('/api/auth/login', methods=['POST'])
@@ -322,10 +519,13 @@ def login():
         return jsonify({'success': False, 'error': 'خطأ في النظام'}), 500
 
 if __name__ == '__main__':
-    print("🚀 تشغيل الباك-إند الآمن...")
+    print("🚀 تشغيل الباك-إند الآمن والموحد...") # تم تعديل الرسالة
     print(f"   الخادم: http://localhost:{config.backend_port}")
-    print(f"   الصحة: http://localhost:{config.backend_port}/api/health")
-    print(f"   تسجيل الدخول: http://localhost:{config.backend_port}/api/auth/login")
+    print(f"   🏠 الصفحة الرئيسية: http://localhost:{config.backend_port}/")
+    print(f"   💬 الشات بوت: http://localhost:{config.backend_port}/web-integration/chatbot-widget.html")
+    print(f"   📊 لوحة التحكم: http://localhost:{config.backend_port}/dashboard/index.html")
+    print(f"   الصحة API: http://localhost:{config.backend_port}/api/health")
+    print(f"   تسجيل الدخول API: http://localhost:{config.backend_port}/api/auth/login")
     print(f"   وضع التطوير: {config.is_debug}")
 
     app.run(host='0.0.0.0', port=config.backend_port, debug=config.is_debug)
