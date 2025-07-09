@@ -1,17 +1,22 @@
-# متطلبات النظام للنشر
-requests>=2.28.0
-sqlite3  # مدمج في Python
-hashlib  # مدمج في Python
-secrets  # مدمج في Python
+# Core application dependencies
+Flask==2.3.3
+Flask-CORS==4.0.0
+requests==2.31.0
+python-dotenv==1.0.1
+PyJWT==2.8.0
+Werkzeug==2.3.7
 
-# للنشر على خوادم الإنتاج (اختياري)
-gunicorn>=20.1.0
-flask>=2.3.0
-waitress>=2.1.0
+# Dependencies for AI Agent
+PyAutoGUI==0.9.54
+Pillow==10.1.0
 
-# للأمان المتقدم (اختياري)
-cryptography>=3.4.8
-bcrypt>=3.2.0
+# Optional: For deployment (uncomment and adjust versions as needed)
+# gunicorn>=20.1.0
+# waitress>=2.1.0
 
-# للمراقبة والتسجيل (اختياري)
-psutil>=5.9.0
+# Optional: For advanced security (uncomment if used, ensure compatibility)
+# cryptography>=3.4.8
+# bcrypt>=3.2.0
+
+# Optional: For monitoring (uncomment if used)
+# psutil>=5.9.0
