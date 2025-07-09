@@ -1,15 +1,16 @@
-from flask import Flask, jsonify, request, send_from_directory # تمت إضافة send_from_directory
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+from flasgger import Swagger # تمت إضافة Swagger
 import sqlite3
 import time
 from datetime import datetime
 from pathlib import Path
 from deepseek_ai import deepseek_ai
 from secure_config import config
-from secure_auth import secure_auth, require_auth, require_role # تأكد من صحة هذا الاستيراد
-from rate_limiter import rate_limiter, rate_limit # تأكد من صحة هذا الاستيراد
+from secure_auth import secure_auth, require_auth, require_role
+from rate_limiter import rate_limiter, rate_limit
 import logging
-import os # تمت إضافة os
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,59 @@ CORS(app, origins=config.allowed_origins, supports_credentials=True)
 
 # إعداد المفتاح السري
 app.secret_key = config.secret_key
+
+# --- إعدادات Swagger (Flasgger) ---
+# يمكنك وضع هذا في ملف config إذا أردت
+SWAGGER_CONFIG = {
+    "headers": [],
+    "specs": [
+        {
+            "endpoint": 'apispec_1',
+            "route": '/apispec_1.json',
+            "rule_filter": lambda rule: True,  # جميع القواعد
+            "model_filter": lambda tag: True,  # جميع النماذج
+        }
+    ],
+    "static_url_path": "/flasgger_static",
+    # "static_folder": "static",  # يمكن تغييره إذا كان لديك ملفات Swagger UI مخصصة
+    "swagger_ui": True,
+    "specs_route": "/apidocs/" # المسار الذي ستُعرض فيه واجهة Swagger UI
+}
+
+# تهيئة Swagger
+# يمكن تخصيص template لتوفير معلومات عامة عن الـ API
+swagger_template = {
+    "info": {
+        "title": "Chatbot System API",
+        "description": "API for the Intelligent Chatbot System with AI Agent integration.",
+        "version": "1.0.0",
+        "contact": {
+            "name": "Support Team",
+            "url": "https://example.com/support", # استبدل بالرابط الفعلي إذا وجد
+            "email": "support@example.com" # استبدل بالبريد الفعلي إذا وجد
+        },
+        # "termsOfService": "https://example.com/terms/", # استبدل بالرابط الفعلي إذا وجد
+    },
+    "host": f"localhost:{config.get('BACKEND_PORT', 8001)}", # يفضل أن يكون ديناميكيًا أو يُقرأ من config
+    "basePath": "/",  # المسار الأساسي للـ API
+    "schemes": [
+        "http",
+        # "https" # أضف https إذا كان الخادم يدعمها
+    ],
+    "securityDefinitions": { # تعريف مخطط الأمان لـ JWT
+        "BearerAuth": {
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header",
+            "description": "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\""
+        }
+    }
+}
+# إذا كنت تريد استخدام swagger_template
+# swagger = Swagger(app, config=SWAGGER_CONFIG, template=swagger_template)
+# أو بشكل أبسط للبدء:
+swagger = Swagger(app, template=swagger_template, config=SWAGGER_CONFIG)
+
 
 DB_PATH = config.get_database_path()
 
@@ -78,6 +132,84 @@ def get_db_connection():
 
 @app.route('/api/stats')
 def stats():
+    """
+    الحصول على إحصائيات النظام.
+    يُرجع هذا الـ endpoint مجموعة من الإحصائيات حول استخدام الشات بوت وأداء النظام.
+    ---
+    tags:
+      - Statistics & Analytics
+    responses:
+      200:
+        description: استجابة ناجحة تحتوي على بيانات الإحصائيات.
+        schema:
+          type: object
+          properties:
+            total_conversations:
+              type: integer
+              description: إجمالي عدد المحادثات المسجلة.
+              example: 1520
+            active_users_today:
+              type: integer
+              description: عدد المستخدمين النشطين (المميزين) اليوم.
+              example: 25
+            total_distinct_users:
+              type: integer
+              description: إجمالي عدد المستخدمين المميزين على الإطلاق.
+              example: 340
+            messages_today:
+              type: integer
+              description: إجمالي عدد الرسائل (من المستخدم والبوت) اليوم.
+              example: 150
+            response_time:
+              type: number
+              format: float
+              description: متوسط وقت استجابة البوت بالثواني.
+              example: 1.3
+            satisfaction_rate:
+              type: number
+              format: float
+              description: متوسط معدل رضا المستخدمين (من 0 إلى 100).
+              example: 85.5
+            channels_today:
+              type: object
+              description: توزيع المحادثات عبر القنوات المختلفة اليوم.
+              additionalProperties:
+                type: integer
+              example: {"website": 100, "whatsapp": 50}
+            hourly_stats_today:
+              type: array
+              description: إحصائيات المحادثات لكل ساعة اليوم.
+              items:
+                type: object
+                properties:
+                  hour:
+                    type: string
+                    example: "14:00"
+                  messages:
+                    type: integer
+                    example: 23
+            recent_chats:
+              type: array
+              description: قائمة بآخر 10 محادثات حديثة.
+              items:
+                type: object
+                properties:
+                  time:
+                    type: string
+                    example: "منذ 5 دقائق"
+                  user:
+                    type: string
+                    example: "user_123"
+                  channel:
+                    type: string
+                    example: "website"
+                  message:
+                    type: string
+                    example: "مرحبا، كيف يمكنني المساعدة؟"
+                  status:
+                    type: string
+                    example: "resolved"
+    """
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -341,7 +473,69 @@ def settings_api():
 @app.route('/api/chat', methods=['POST'])
 @rate_limit('chat_api')
 def chat():
-    """معالجة رسائل الشات"""
+    """
+    إرسال رسالة إلى الشات بوت والحصول على رد.
+    تتفاعل هذه النقطة مع DeepSeek AI (إذا تم تكوينه) لمعالجة رسالة المستخدم وتقديم رد ذكي.
+    يتم حفظ المحادثة في قاعدة البيانات.
+    ---
+    tags:
+      - Chat
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - message
+          properties:
+            message:
+              type: string
+              description: رسالة المستخدم.
+              example: "مرحبا، كيف حال الطقس اليوم؟"
+            user_id:
+              type: string
+              description: معرف المستخدم (اختياري، الافتراضي 'anonymous').
+              example: "user_775"
+            session_id:
+              type: string
+              description: معرف الجلسة (اختياري، الافتراضي 'default').
+              example: "session_abc123"
+    responses:
+      200:
+        description: تم استلام الرسالة بنجاح وتم إرجاع رد البوت.
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            response:
+              type: string
+              description: رد البوت على رسالة المستخدم.
+              example: "الطقس اليوم مشمس وجميل! 🌞"
+            timestamp:
+              type: number
+              format: float
+              description: الطابع الزمني للمعاملة.
+            user_id:
+              type: string
+              description: معرف المستخدم الذي أرسل الرسالة.
+            session_id:
+              type: string
+              description: معرف الجلسة.
+      500:
+        description: خطأ داخلي في الخادم أثناء معالجة الرسالة.
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "خطأ في معالجة الرسالة"
+    """
     try:
         data = request.get_json()
         message = data.get('message', '').strip()
@@ -367,7 +561,36 @@ def chat():
 
 @app.route('/api/health')
 def health():
-    """فحص صحة النظام"""
+    """
+    Endpoint لفحص صحة النظام.
+    يُرجع هذا الـ endpoint حالة النظام العامة، بما في ذلك حالة قاعدة البيانات واتصال DeepSeek AI.
+    ---
+    tags:
+      - Health & Status
+    responses:
+      200:
+        description: استجابة ناجحة تُظهر أن النظام يعمل بشكل جيد.
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              description: الحالة العامة للنظام (عادة 'healthy').
+              example: 'healthy'
+            database:
+              type: string
+              description: حالة الاتصال بقاعدة البيانات.
+              example: 'connected'
+            deepseek_ai:
+              type: string
+              description: حالة الاتصال بخدمة DeepSeek AI.
+              example: 'connected' # أو 'error' إذا كان هناك مشكلة
+            timestamp:
+              type: number
+              format: float
+              description: الطابع الزمني الحالي (Unix timestamp).
+              example: 1678886400.0
+    """
     db_status = 'connected' if Path(DB_PATH).exists() else 'disconnected'
 
     # فحص DeepSeek AI
@@ -493,7 +716,90 @@ def save_conversation(user_id, session_id, user_message, bot_response):
 @app.route('/api/auth/login', methods=['POST'])
 @rate_limit('auth_login')
 def login():
-    """تسجيل الدخول"""
+    """
+    تسجيل دخول المستخدم.
+    يسمح للمستخدم بتسجيل الدخول والحصول على JWT token لاستخدامه في الطلبات اللاحقة للـ APIs المحمية.
+    ---
+    tags:
+      - Authentication
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - username
+            - password
+          properties:
+            username:
+              type: string
+              description: اسم المستخدم.
+              example: "admin"
+            password:
+              type: string
+              format: password
+              description: كلمة المرور.
+              example: "SecureAdmin123!"
+    responses:
+      200:
+        description: تسجيل دخول ناجح. يُرجع token ومعلومات المستخدم.
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            token:
+              type: string
+              description: JWT token للمصادقة.
+              example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            user:
+              type: object
+              properties:
+                user_id:
+                  type: integer
+                  example: 1
+                username:
+                  type: string
+                  example: "admin"
+                role:
+                  type: string
+                  example: "admin"
+      400:
+        description: طلب غير صالح (مثل حقول مفقودة).
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "اسم المستخدم وكلمة المرور مطلوبان"
+      401:
+        description: فشل المصادقة (بيانات اعتماد غير صحيحة).
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "بيانات اعتماد غير صحيحة"
+      500:
+        description: خطأ داخلي في الخادم.
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "خطأ في النظام"
+    """
     try:
         data = request.get_json()
         username = data.get('username', '').strip()
